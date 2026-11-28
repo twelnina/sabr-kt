@@ -47,13 +47,32 @@ class InnerTubeClientTest {
     }
 
     @Test
+    fun trimsWhitespaceAroundSabrUrl() = runTest {
+        val sabrUrl = "https://example.com/sabr?token=a%2Fb%2Bc"
+        val client = mockHttpClient {
+            respond("""{"streamingData":{"serverAbrStreamingUrl":"  $sabrUrl  "}}""")
+        }
+
+        client.use { httpClient ->
+            assertEquals(sabrUrl, createClient(httpClient).findSabrUrl("testVideoId"))
+        }
+    }
+
+    @Test
     fun returnsNullWhenSabrUrlIsMissingOrUnusable() = runTest {
         val responses = listOf(
             "{}",
             """{"streamingData":{}}""",
             """{"streamingData":{"serverAbrStreamingUrl":"   "}}""",
             """{"streamingData":{"serverAbrStreamingUrl":null}}""",
-            """{"streamingData":{"serverAbrStreamingUrl":123}}"""
+            """{"streamingData":{"serverAbrStreamingUrl":123}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"not-a-url"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"//example.com/sabr"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"https:///sabr"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"https://example.com/s abr"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"https://example.com/sabr?token=%GG"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"https://example.com:65536/sabr"}}""",
+            """{"streamingData":{"serverAbrStreamingUrl":"ftp://example.com/sabr"}}"""
         )
 
         for (body in responses) {

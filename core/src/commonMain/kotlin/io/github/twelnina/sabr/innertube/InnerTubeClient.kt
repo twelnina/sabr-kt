@@ -1,19 +1,10 @@
 package io.github.twelnina.sabr.innertube
 
-import io.ktor.client.HttpClient
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import kotlinx.serialization.json.*
 
 internal class InnerTubeClient(
     private val httpClient: HttpClient,
@@ -47,7 +38,7 @@ internal class InnerTubeClient(
         val streamingData = response["streamingData"] as? JsonObject ?: return null
         val url = streamingData["serverAbrStreamingUrl"] as? JsonPrimitive ?: return null
 
-        return url.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        return url.takeIf { it.isString }?.content?.trim()?.takeIf(::isAbsoluteHttpUrl)
     }
 
     suspend fun findSabrUrl(videoId: String): String? {
@@ -58,6 +49,28 @@ internal class InnerTubeClient(
 
         return extractSabrUrl(response.bodyAsText())
     }
+}
+
+
+private fun isAbsoluteHttpUrl(value: String): Boolean {
+    val authorityAndPath = value.substringAfter("://", missingDelimiterValue = "")
+    if (authorityAndPath.isEmpty() || authorityAndPath.startsWith('/')) return false
+    if (value.any { it.isWhitespace() || it.isISOControl() || it in "\\\"<>^`{|}" }) return false
+    if (value.hasInvalidPercentEscape()) return false
+
+    val url = try {
+        URLBuilder().takeFrom(value)
+    } catch (_: URLParserException) {
+        return false
+    }
+
+    return (url.protocolOrNull == URLProtocol.HTTP || url.protocolOrNull == URLProtocol.HTTPS) &&
+            url.host.isNotEmpty()
+}
+
+private fun String.hasInvalidPercentEscape(): Boolean {
+    val invalidPercentEscape = Regex("%(?![0-9A-Fa-f]{2})")
+    return invalidPercentEscape.containsMatchIn(this)
 }
 
 internal class InnerTubeHttpException(val statusCode: Int) :
